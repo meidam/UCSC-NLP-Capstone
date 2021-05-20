@@ -269,7 +269,9 @@ def main():
         if data_args.test_file is not None:
             data_files["test"] = data_args.test_file
             extension = data_args.test_file.split(".")[-1]
-        datasets = load_dataset(extension, data_files=data_files, field="data", cache_dir=model_args.cache_dir)
+        
+        datasets = load_dataset('custom_squad.py', data_files=data_files)
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -316,6 +318,7 @@ def main():
         column_names = datasets["validation"].column_names
     else:
         column_names = datasets["test"].column_names
+        
     question_column_name = "question" if "question" in column_names else column_names[0]
     context_column_name = "context" if "context" in column_names else column_names[1]
     answer_column_name = "answers" if "answers" in column_names else column_names[2]
@@ -335,6 +338,7 @@ def main():
         # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
         # in one example possible giving several features when a context is long, each of those features having a
         # context that overlaps a bit the context of the previous feature.
+        
         tokenized_examples = tokenizer(
             examples[question_column_name if pad_on_right else context_column_name],
             examples[context_column_name if pad_on_right else question_column_name],
@@ -400,7 +404,6 @@ def main():
                     while offsets[token_end_index][1] >= end_char:
                         token_end_index -= 1
                     tokenized_examples["end_positions"].append(token_end_index + 1)
-
         return tokenized_examples
 
     if training_args.do_train:
@@ -411,6 +414,7 @@ def main():
             # We will select sample from whole data if agument is specified
             train_dataset = train_dataset.select(range(data_args.max_train_samples))
         # Create train feature from dataset
+        
         train_dataset = train_dataset.map(
             prepare_train_features,
             batched=True,

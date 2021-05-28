@@ -24,7 +24,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Optional
 
-from datasets import concatenate_datasets, load_dataset, load_metric
+from datasets import concatenate_datasets, load_dataset, load_metric, load_from_disk
 
 import transformers
 from trainer_qa import QuestionAnsweringTrainer
@@ -267,9 +267,16 @@ def main():
     #
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
+
     if data_args.dataset_name is not None:
-        # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir)
+        try:
+            # Downloading and loading a dataset from the hub.
+            print('attempting to download and load dataset from the hub')
+            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir)
+        except:
+            print('attempting to load ', data_args.dataset_name, ' from directory')
+            datasets = load_from_disk(data_args.dataset_name)
+            print('sucess!')
     else:
         data_files = {}
         if data_args.train_file is not None:

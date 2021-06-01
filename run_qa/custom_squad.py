@@ -104,7 +104,7 @@ class Squad(datasets.GeneratorBasedBuilder):
         downloaded_files = dl_manager.download_and_extract(self.config.data_files)
         return [
             datasets.SplitGenerator(name=datasets.Split.TRAIN, gen_kwargs={"filepath": downloaded_files["train"]}),
-            datasets.SplitGenerator(name=datasets.Split.VALIDATION, gen_kwargs={"filepath": downloaded_files["validation"]}),
+            #datasets.SplitGenerator(name=datasets.Split.VALIDATION, gen_kwargs={"filepath": downloaded_files["validation"]}),
         ]
 
 

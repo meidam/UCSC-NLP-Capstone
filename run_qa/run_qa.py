@@ -230,8 +230,8 @@ def main():
             )
     if data_args.k_fold_cross_valid > 1:
         for i in range(data_args.k_fold_cross_valid):
-            if not os.path.exists(training_args.output_dir + '/Fold-' + str(i+1)):
-                os.makedirs(training_args.output_dir + '/Fold-' + str(i+1))
+            if not os.path.exists(training_args.output_dir + '/Split-' + str(i+1)):
+                os.makedirs(training_args.output_dir + '/Split-' + str(i+1))
 
     # Setup logging
     logging.basicConfig(
@@ -300,13 +300,17 @@ def main():
     # download model & vocab.
     
     # Loop through k times
-    dev_evaluations = {'f1': [], 'exact_match': []}
-    test_evaluations = {'f1': [], 'exact_match': []}
+    dev_best_per_split = {'f1': [], 'exact_match': [], 'epoch': []}
+    test_best_per_split = {'f1': [], 'exact_match': []}
     
     output_dir = training_args.output_dir
+    epochs = training_args.num_train_epochs
+    training_args.num_train_epochs = 1
     
-    i = 0
-    while i < data_args.k_fold_cross_valid:
+    for i in range(0, data_args.k_fold_cross_valid):
+        print('***************************')
+        print('Split ', i+1)
+        print('***************************')
         
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,
@@ -339,14 +343,19 @@ def main():
             )
 
         if data_args.k_fold_cross_valid > 1:
-            training_args.output_dir = output_dir + '/Fold-' + str(i+1)
-            splits = cur_datasets.copy()
+            training_args.output_dir = output_dir + '/Split-' + str(i+1)
+            folds = cur_datasets.copy()
             datasets = {}
-            datasets["validation"] = splits.pop(i)
+            datasets["validation"] = folds.pop(i)
+            
             if training_args.do_predict and data_args.k_fold_cross_valid > 2:
-                datasets["test"] = splits.pop(i if i < data_args.k_fold_cross_valid - 1 else 0)
+                val_test = datasets["validation"].train_test_split(test_size=0.5)
+                datasets["validation"] = val_test["train"]
+                datasets["test"] = val_test["test"]
                 
-            datasets["train"] = concatenate_datasets(splits)
+            datasets["train"] = concatenate_datasets(folds)
+            
+            print('Datasets', datasets)
         
         # Preprocessing the datasets.
         # Preprocessing is slighlty different for training and evaluation.
@@ -583,7 +592,7 @@ def main():
 
         def compute_metrics(p: EvalPrediction):
             return metric.compute(predictions=p.predictions, references=p.label_ids)
-
+        
         # Initialize our Trainer
         trainer = QuestionAnsweringTrainer(
             model=model,
@@ -596,82 +605,98 @@ def main():
             post_process_function=post_processing_function,
             compute_metrics=compute_metrics,
         )
-       
-        # Training
-        if training_args.do_train:
-            checkpoint = None
-            if training_args.resume_from_checkpoint is not None:
-                checkpoint = training_args.resume_from_checkpoint
-            elif last_checkpoint is not None:
-                checkpoint = last_checkpoint
-            train_result = trainer.train(resume_from_checkpoint=checkpoint)
-            trainer.save_model()  # Saves the tokenizer too for easy upload
-
-            metrics = train_result.metrics
-            max_train_samples = (
-                data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-            )
-            metrics["train_samples"] = min(max_train_samples, len(train_dataset))
-
-            trainer.log_metrics("train", metrics)
-            trainer.save_metrics("train", metrics)
-            trainer.save_state()
-
-        # Evaluation
-        if training_args.do_eval:
-            logger.info("*** Evaluate ***")
-            metrics = trainer.evaluate()
-            
-            dev_evaluations['f1'].append(metrics['f1'])
-            dev_evaluations['exact_match'].append(metrics['exact_match'])
-
-            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-
-            trainer.log_metrics("eval", metrics)
-            trainer.save_metrics("eval", metrics)
-
-        # Prediction
-        if training_args.do_predict:
-            logger.info("*** Predict ***")
-            results = trainer.predict(predict_dataset, predict_examples)
-            metrics = results.metrics
-            
-            test_evaluations['f1'].append(metrics['f1'])
-            test_evaluations['exact_match'].append(metrics['exact_match'])
-
-            max_predict_samples = (
-                data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
-            )
-            metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
-
-            trainer.log_metrics("predict", metrics)
-            trainer.save_metrics("predict", metrics)
-
-        if training_args.push_to_hub:
-            trainer.push_to_hub()
-            
-        i += 1
         
+        for i in range(int(epochs)):
+            if not os.path.exists(training_args.output_dir + '/Epoch-' + str(i+1)):
+                os.makedirs(training_args.output_dir + '/Epoch-' + str(i+1))
+        
+        cur_dir = training_args.output_dir
+        for epoch in range(int(epochs)):
+            training_args.output_dir = cur_dir + '/Epoch-' + str(epoch+1)
+            
+            dev_evaluations = {'f1': [], 'exact_match': []}
+            test_evaluations = {'f1': [], 'exact_match': []}
+            
+            # Training
+            if training_args.do_train:
+                checkpoint = None
+                if training_args.resume_from_checkpoint is not None:
+                    checkpoint = training_args.resume_from_checkpoint
+                elif last_checkpoint is not None:
+                    checkpoint = last_checkpoint
+                train_result = trainer.train(resume_from_checkpoint=checkpoint)
+                trainer.save_model()  # Saves the tokenizer too for easy upload
+
+                metrics = train_result.metrics
+                max_train_samples = (
+                    data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+                )
+                metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+
+                trainer.log_metrics("train", metrics)
+                trainer.save_metrics("train", metrics)
+                trainer.save_state()
+
+            # Evaluation
+            if training_args.do_eval:
+                logger.info("*** Evaluate ***")
+                metrics = trainer.evaluate()
+
+                dev_evaluations['f1'].append(metrics['f1'])
+                dev_evaluations['exact_match'].append(metrics['exact_match'])
+
+                max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+                metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+
+                trainer.log_metrics("eval", metrics)
+                trainer.save_metrics("eval", metrics)
+
+            # Prediction
+            if training_args.do_predict:
+                logger.info("*** Predict ***")
+                results = trainer.predict(predict_dataset, predict_examples)
+                metrics = results.metrics
+
+                test_evaluations['f1'].append(metrics['f1'])
+                test_evaluations['exact_match'].append(metrics['exact_match'])
+
+                test_evaluations['f1'].append(dev_evaluations['f1'][-1])
+                test_evaluations['exact_match'].append(dev_evaluations['exact_match'][-1])
+
+                dev_evaluations['f1'].append(metrics['f1'])
+                dev_evaluations['exact_match'].append(metrics['exact_match'])
+
+
+                max_predict_samples = (
+                    data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+                )
+                metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
+
+                trainer.log_metrics("predict", metrics)
+                trainer.save_metrics("predict", metrics)
+
+            if training_args.push_to_hub:
+                trainer.push_to_hub()
+                
+        if data_args.k_fold_cross_valid > 1:
+            index = dev_evaluations['f1'].index(max(dev_evaluations['f1']))
+            
+            dev_best_per_split['f1'].append(dev_evaluations['f1'][index])
+            dev_best_per_split['exact_match'].append(dev_evaluations['exact_match'][index])
+            dev_best_per_split['epoch'].append(index+1)
+            
+            test_best_per_split['f1'].append(test_evaluations['f1'][index])
+            test_best_per_split['exact_match'].append(test_evaluations['exact_match'][index])
+            
+            
     if data_args.k_fold_cross_valid > 1:
         training_args.output_dir = output_dir
         
-        ave_evaluation = {}
-        ave_evaluation['f1'] = sum(dev_evaluations['f1'])/len(dev_evaluations['f1'])
-        ave_evaluation['exact_match'] = sum(dev_evaluations['exact_match'])/len(dev_evaluations['f1'])
-
-        trainer.log_metrics("average", ave_evaluation)
-        trainer.save_metrics("average", ave_evaluation)
-        
-        if training_args.do_predict:
-            index = dev_evaluations['f1'].index(max(dev_evaluations['f1']))
-
-            best_test_evaluation = {}
-            best_test_evaluation['f1'] = test_evaluations['f1'][index]
-            best_test_evaluation['exact_match'] = test_evaluations['exact_match'][index]
-
-            trainer.log_metrics("best fold = " + str(index), best_test_evaluation)
-            trainer.save_metrics("best fold = " + str(index), best_test_evaluation) 
+        index = dev_best_per_split['f1'].index(max(dev_best_per_split['f1']))
+        print('Best Split: ', index)
+        print('Best split best epoch: ', dev_best_per_split['epoch'][index])
+        print('Test F1: ', test_best_per_split['f1'][index])
+        print('Test exact match: ', test_best_per_split['exact_match'][index])
 
 
 def _mp_fn(index):

@@ -26,9 +26,12 @@ if is_torch_tpu_available():
 
 
 class QuestionAnsweringTrainer(Trainer):
-    def __init__(self, *args, eval_examples=None, post_process_function=None, **kwargs):
+    def __init__(self, *args, eval_examples=None, predict_examples=None, predict_dataset=None, post_process_function=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.eval_examples = eval_examples
+        self.predict_examples = predict_examples
+        self.predict_dataset = predict_dataset
+        self.checkpoint = 1
         self.post_process_function = post_process_function
 
     def evaluate(self, eval_dataset=None, eval_examples=None, ignore_keys=None):
@@ -57,13 +60,34 @@ class QuestionAnsweringTrainer(Trainer):
 
             self.log(metrics)
         else:
-            metrics = {}
+            eval_metrics = {}
 
         if self.args.tpu_metrics_debug or self.args.debug:
             # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
             xm.master_print(met.metrics_report())
 
         self.control = self.callback_handler.on_evaluate(self.args, self.state, self.control, metrics)
+        
+        
+        if self.predict_dataset:
+            pred_metrics = self.predict(self.predict_dataset, self.predict_examples).metrics
+                        
+            old_dir = self.args.output_dir
+            if self.checkpoint <= self.args.num_train_epochs:
+                self.args.output_dir = old_dir + '/Epoch-' + str(self.checkpoint)
+            else:
+                self.checkpoint=0
+            
+            self.log_metrics("eval", metrics)
+            self.save_metrics("eval", metrics)
+            
+            self.log_metrics("pred", pred_metrics)
+            self.save_metrics("pred", pred_metrics)
+            
+            self.args.output_dir = old_dir
+            
+            self.checkpoint += 1
+        
         return metrics
 
     def predict(self, predict_dataset, predict_examples, ignore_keys=None):

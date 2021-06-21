@@ -21,10 +21,14 @@ Fine-tuning the library models for question answering.
 import logging
 import os
 import sys
+import json
+import pandas as pd
+import numpy as np
+import datasets
 from dataclasses import dataclass, field
 from typing import Optional
 
-from datasets import concatenate_datasets, load_dataset, load_metric
+from datasets import concatenate_datasets, load_dataset, load_metric, load_from_disk
 
 import transformers
 from trainer_qa import QuestionAnsweringTrainer
@@ -196,6 +200,33 @@ class DataTrainingArguments:
             if self.test_file is not None:
                 extension = self.test_file.split(".")[-1]
                 assert extension in ["csv", "json"], "`test_file` should be a csv or a json file."
+            if self.dataset_name is not None:
+                extension = self.dataset_name
+                print(extension)
+                print(self.dataset_name)
+
+
+def get_covidQA_dataset():
+    covid_file = '../data/COVID-QA.json'
+    jsonfile = open(covid_file, 'r')
+
+    covidQA = jsonfile.read()
+    jsonfile.close()
+
+    covid_data = json.loads(covidQA)
+    covid_qa_squad_format = []
+    for rows in covid_data['data']:
+      for context in rows['paragraphs']:
+        for qa_pairs in context['qas']:
+          features = {'id':str(context['document_id']),
+                      'title': 'COVID_19',
+                      'context':str(context['context']),
+                      'question':qa_pairs['question'],
+                      'answers':{'answer_start': np.array([qa_pairs['answers'][0]['answer_start']], dtype=np.int32),
+                                 'text':[qa_pairs['answers'][0]['text']]}}
+          covid_qa_squad_format.append(features)
+    covid_df = pd.DataFrame(covid_qa_squad_format)
+    return (datasets.Dataset.from_dict(covid_df))
 
 
 def main():
@@ -266,7 +297,29 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir)
+        if data_args.k_fold_cross_valid > 1:
+            k_fold = data_args.k_fold_cross_valid
+
+        try:
+            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
+                                    cache_dir=model_args.cache_dir)
+        except:
+            #datasets = load_from_disk(data_args.dataset_name)
+            all_datasets = load_from_disk(data_args.dataset_name)
+            print('made it to the datasets : ', all_datasets)
+            covid_data = all_datasets['covid']
+            squad_dataset = all_datasets['squad']
+            out_of_domain_dataset = []
+            for k in range(k_fold):
+                # need to change this in the future to the num_train_epochs or some other counter to keep track
+                # of how much I need to split this
+                out_of_domain_dataset.append(squad_dataset.shard(num_shards=k_fold, index=k, contiguous=True))
+
+            cur_datasets = []
+            for k in range(k_fold):
+                cur_datasets.append(covid_data.shard(num_shards=k_fold, index=k, contiguous=True))
+            print('its datasets are : ', cur_datasets)
+
     else:
         data_files = {}
         if data_args.train_file is not None:
@@ -282,8 +335,36 @@ def main():
         
         if data_args.k_fold_cross_valid > 1:
             k_fold = data_args.k_fold_cross_valid
-            cur_datasets = load_dataset('custom_squad.py', data_files=data_files, 
-                                     split=[f'train[{k}%:{k+int(100/k_fold)}%]' for k in range(0, 100, int(100/k_fold))])
+            try:
+                cur_datasets = load_dataset('custom_squad.py', data_files=data_files,
+                                         split=[f'train[{k}%:{k+int(100/k_fold)}%]' for k in range(0, 100, int(100/k_fold))])
+            except:
+                all_datasets = load_from_disk(data_args.dataset_name)
+                covid_data = all_datasets['covid']
+                squad_dataset = all_datasets['squad']
+                # try:
+                #     all_datasets = load_from_disk(data_args.dataset_name)
+                #     squad_dataset = all_datasets['squad']
+                #     covid_data = all_datasets['covid']
+                #
+                # except:
+                #     squad_dataset = load_dataset('squad')
+                #     squad_dataset = concatenate_datasets([squad_dataset['train'], squad_dataset['test']])
+                #     covid_data = get_covidQA_dataset()
+
+                # cur_epochs = training_args.num_train_epochs
+                out_of_domain_dataset = []
+                for k in range(k_fold):
+                    # need to change this in the future to the num_train_epochs or some other counter to keep track
+                    # of how much I need to split this
+                    out_of_domain_dataset.append(squad_dataset.shard(num_shards=k_fold, index=k, contiguous=True))
+
+                cur_datasets = []
+                for k in range(k_fold):
+                    cur_datasets.append(covid_data.shard(num_shards=k_fold, index=k, contiguous=True))
+
+
+
         else:
             datasets = load_dataset('custom_squad.py', data_files=data_files)
         
@@ -295,11 +376,11 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    
+
     # Loop through k times
     
     output_dir = training_args.output_dir
-    
+    print('outside the loop the cur_datasets are : ', cur_datasets)
     for i in range(0, data_args.k_fold_cross_valid):
         print('***************************')
         print('Split ', i+1)
@@ -320,7 +401,7 @@ def main():
         )
         model = AutoModelForQuestionAnswering.from_pretrained(
             model_args.model_name_or_path,
-            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            from_tf= bool(".ckpt" in model_args.model_name_or_path),
             config=config,
             cache_dir=model_args.cache_dir,
             revision=model_args.model_revision,
@@ -346,7 +427,9 @@ def main():
                 datasets["validation"] = val_test["train"]
                 datasets["test"] = val_test["test"]
                 
-            datasets["train"] = concatenate_datasets(folds)
+            rest_folds = concatenate_datasets(folds)
+            out_domain = concatenate_datasets(out_of_domain_dataset)
+            datasets["train"] = concatenate_datasets([rest_folds, out_domain])
             
             print('Datasets', datasets)
         
@@ -447,6 +530,7 @@ def main():
             return tokenized_examples
 
         if training_args.do_train:
+            print('in the training loop')
             if "train" not in datasets:
                 raise ValueError("--do_train requires a train dataset")
             train_dataset = datasets["train"]
@@ -465,7 +549,7 @@ def main():
             if data_args.max_train_samples is not None:
                 # Number of samples might increase during Feature Creation, We select only specified max samples
                 train_dataset = train_dataset.select(range(data_args.max_train_samples))
-
+            print('exeted the training loop')
         # Validation preprocessing
         def prepare_validation_features(examples):
             # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results

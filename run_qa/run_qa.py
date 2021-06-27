@@ -284,7 +284,7 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
     
-    print('Training Args: ', training_args)
+    #print('Training Args: ', training_args)
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
@@ -301,12 +301,9 @@ def main():
             k_fold = data_args.k_fold_cross_valid
 
         try:
-            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
-                                    cache_dir=model_args.cache_dir)
-        except:
-            #datasets = load_from_disk(data_args.dataset_name)
+            # datasets = load_from_disk(data_args.dataset_name)
             all_datasets = load_from_disk(data_args.dataset_name)
-            print('made it to the datasets : ', all_datasets)
+            # print('made it to the datasets : ', all_datasets)
             covid_data = all_datasets['covid']
             squad_dataset = all_datasets['squad']
             out_of_domain_dataset = []
@@ -318,8 +315,10 @@ def main():
             cur_datasets = []
             for k in range(k_fold):
                 cur_datasets.append(covid_data.shard(num_shards=k_fold, index=k, contiguous=True))
-            print('its datasets are : ', cur_datasets)
-
+            # print('its datasets are : ', cur_datasets)
+        except:
+            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
+                                    cache_dir=model_args.cache_dir)
     else:
         data_files = {}
         if data_args.train_file is not None:
@@ -336,6 +335,7 @@ def main():
         if data_args.k_fold_cross_valid > 1:
             k_fold = data_args.k_fold_cross_valid
             try:
+
                 cur_datasets = load_dataset('custom_squad.py', data_files=data_files,
                                          split=[f'train[{k}%:{k+int(100/k_fold)}%]' for k in range(0, 100, int(100/k_fold))])
             except:
@@ -380,7 +380,7 @@ def main():
     # Loop through k times
     
     output_dir = training_args.output_dir
-    print('outside the loop the cur_datasets are : ', cur_datasets)
+    #print('outside the loop the cur_datasets are : ', cur_datasets)
     for i in range(0, data_args.k_fold_cross_valid):
         print('***************************')
         print('Split ', i+1)
@@ -530,7 +530,6 @@ def main():
             return tokenized_examples
 
         if training_args.do_train:
-            print('in the training loop')
             if "train" not in datasets:
                 raise ValueError("--do_train requires a train dataset")
             train_dataset = datasets["train"]
@@ -549,7 +548,6 @@ def main():
             if data_args.max_train_samples is not None:
                 # Number of samples might increase during Feature Creation, We select only specified max samples
                 train_dataset = train_dataset.select(range(data_args.max_train_samples))
-            print('exeted the training loop')
         # Validation preprocessing
         def prepare_validation_features(examples):
             # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results

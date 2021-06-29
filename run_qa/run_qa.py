@@ -21,10 +21,6 @@ Fine-tuning the library models for question answering.
 import logging
 import os
 import sys
-import json
-import pandas as pd
-import numpy as np
-import datasets
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -47,10 +43,13 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from utils_qa import postprocess_qa_predictions
+
+
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.6.0.dev0")
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ModelArguments:
@@ -148,13 +147,6 @@ class DataTrainingArguments:
             "value if set."
         },
     )
-    k_fold_cross_valid: Optional[int] = field(
-        default=1,
-        metadata={
-            "help": "Optional value for k-fold cross validation"
-            "value if set."
-        },
-    )
     version_2_with_negative: bool = field(
         default=False, metadata={"help": "If true, some of the examples do not have an answer."}
     )
@@ -200,39 +192,13 @@ class DataTrainingArguments:
             if self.test_file is not None:
                 extension = self.test_file.split(".")[-1]
                 assert extension in ["csv", "json"], "`test_file` should be a csv or a json file."
-            if self.dataset_name is not None:
-                extension = self.dataset_name
-                print(extension)
-                print(self.dataset_name)
-
-
-def get_covidQA_dataset():
-    covid_file = '../data/COVID-QA.json'
-    jsonfile = open(covid_file, 'r')
-
-    covidQA = jsonfile.read()
-    jsonfile.close()
-
-    covid_data = json.loads(covidQA)
-    covid_qa_squad_format = []
-    for rows in covid_data['data']:
-      for context in rows['paragraphs']:
-        for qa_pairs in context['qas']:
-          features = {'id':str(context['document_id']),
-                      'title': 'COVID_19',
-                      'context':str(context['context']),
-                      'question':qa_pairs['question'],
-                      'answers':{'answer_start': np.array([qa_pairs['answers'][0]['answer_start']], dtype=np.int32),
-                                 'text':[qa_pairs['answers'][0]['text']]}}
-          covid_qa_squad_format.append(features)
-    covid_df = pd.DataFrame(covid_qa_squad_format)
-    return (datasets.Dataset.from_dict(covid_df))
 
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
+    # 
 
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
@@ -256,10 +222,6 @@ def main():
                 f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
-    if data_args.k_fold_cross_valid > 1:
-        for i in range(data_args.k_fold_cross_valid):
-            if not os.path.exists(training_args.output_dir + '/Split-' + str(i+1)):
-                os.makedirs(training_args.output_dir + '/Split-' + str(i+1))
 
     # Setup logging
     logging.basicConfig(
@@ -283,8 +245,6 @@ def main():
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    
-    #print('Training Args: ', training_args)
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
@@ -297,28 +257,11 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        if data_args.k_fold_cross_valid > 1:
-            k_fold = data_args.k_fold_cross_valid
-
         try:
-            # datasets = load_from_disk(data_args.dataset_name)
-            all_datasets = load_from_disk(data_args.dataset_name)
-            # print('made it to the datasets : ', all_datasets)
-            covid_data = all_datasets['covid']
-            squad_dataset = all_datasets['squad']
-            out_of_domain_dataset = []
-            for k in range(k_fold):
-                # need to change this in the future to the num_train_epochs or some other counter to keep track
-                # of how much I need to split this
-                out_of_domain_dataset.append(squad_dataset.shard(num_shards=k_fold, index=k, contiguous=True))
-
-            cur_datasets = []
-            for k in range(k_fold):
-                cur_datasets.append(covid_data.shard(num_shards=k_fold, index=k, contiguous=True))
-            # print('its datasets are : ', cur_datasets)
+            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir=model_args.cache_dir)
         except:
-            datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
-                                    cache_dir=model_args.cache_dir)
+            datasets = load_from_disk(data_args.dataset_name)
+            print('datasets: ', datasets)
     else:
         data_files = {}
         if data_args.train_file is not None:
@@ -331,43 +274,7 @@ def main():
         if data_args.test_file is not None:
             data_files["test"] = data_args.test_file
             extension = data_args.test_file.split(".")[-1]
-        
-        if data_args.k_fold_cross_valid > 1:
-            k_fold = data_args.k_fold_cross_valid
-            try:
-
-                cur_datasets = load_dataset('custom_squad.py', data_files=data_files,
-                                         split=[f'train[{k}%:{k+int(100/k_fold)}%]' for k in range(0, 100, int(100/k_fold))])
-            except:
-                all_datasets = load_from_disk(data_args.dataset_name)
-                covid_data = all_datasets['covid']
-                squad_dataset = all_datasets['squad']
-                # try:
-                #     all_datasets = load_from_disk(data_args.dataset_name)
-                #     squad_dataset = all_datasets['squad']
-                #     covid_data = all_datasets['covid']
-                #
-                # except:
-                #     squad_dataset = load_dataset('squad')
-                #     squad_dataset = concatenate_datasets([squad_dataset['train'], squad_dataset['test']])
-                #     covid_data = get_covidQA_dataset()
-
-                # cur_epochs = training_args.num_train_epochs
-                out_of_domain_dataset = []
-                for k in range(k_fold):
-                    # need to change this in the future to the num_train_epochs or some other counter to keep track
-                    # of how much I need to split this
-                    out_of_domain_dataset.append(squad_dataset.shard(num_shards=k_fold, index=k, contiguous=True))
-
-                cur_datasets = []
-                for k in range(k_fold):
-                    cur_datasets.append(covid_data.shard(num_shards=k_fold, index=k, contiguous=True))
-
-
-
-        else:
-            datasets = load_dataset('custom_squad.py', data_files=data_files)
-        
+        datasets = load_dataset(extension, data_files=data_files, field="data", cache_dir=model_args.cache_dir)
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -376,364 +283,330 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
+    config = AutoConfig.from_pretrained(
+        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
+        cache_dir=model_args.cache_dir,
+        use_fast=True,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
+    model = AutoModelForQuestionAnswering.from_pretrained(
+        model_args.model_name_or_path,
+        from_tf=bool(".ckpt" in model_args.model_name_or_path),
+        config=config,
+        cache_dir=model_args.cache_dir,
+        revision=model_args.model_revision,
+        use_auth_token=True if model_args.use_auth_token else None,
+    )
 
-    # Loop through k times
-    
-    output_dir = training_args.output_dir
-    #print('outside the loop the cur_datasets are : ', cur_datasets)
-    for i in range(0, data_args.k_fold_cross_valid):
-        print('***************************')
-        print('Split ', i+1)
-        print('***************************')
-        
-        config = AutoConfig.from_pretrained(
-            model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
-            cache_dir=model_args.cache_dir,
-            use_fast=True,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
-        )
-        model = AutoModelForQuestionAnswering.from_pretrained(
-            model_args.model_name_or_path,
-            from_tf= bool(".ckpt" in model_args.model_name_or_path),
-            config=config,
-            cache_dir=model_args.cache_dir,
-            revision=model_args.model_revision,
-            use_auth_token=True if model_args.use_auth_token else None,
+    # Tokenizer check: this script requires a fast tokenizer.
+    if not isinstance(tokenizer, PreTrainedTokenizerFast):
+        raise ValueError(
+            "This example script only works for models that have a fast tokenizer. Checkout the big table of models "
+            "at https://huggingface.co/transformers/index.html#bigtable to find the model types that meet this "
+            "requirement"
         )
 
-        # Tokenizer check: this script requires a fast tokenizer.
-        if not isinstance(tokenizer, PreTrainedTokenizerFast):
-            raise ValueError(
-                "This example script only works for models that have a fast tokenizer. Checkout the big table of models "
-                "at https://huggingface.co/transformers/index.html#bigtable to find the model types that meet this "
-                "requirement"
-            )
+    # Preprocessing the datasets.
+    # Preprocessing is slighlty different for training and evaluation.
+    if training_args.do_train:
+        column_names = datasets["train"].column_names
+    elif training_args.do_eval:
+        column_names = datasets["validation"].column_names
+    else:
+        column_names = datasets["test"].column_names
+    question_column_name = "question" if "question" in column_names else column_names[0]
+    context_column_name = "context" if "context" in column_names else column_names[1]
+    answer_column_name = "answers" if "answers" in column_names else column_names[2]
 
-        if data_args.k_fold_cross_valid > 1:
-            training_args.output_dir = output_dir + '/Split-' + str(i+1)
-            folds = cur_datasets.copy()
-            datasets = {}
-            datasets["validation"] = folds.pop(i)
-            
-            if training_args.do_predict and data_args.k_fold_cross_valid > 2:
-                val_test = datasets["validation"].train_test_split(test_size=0.5)
-                datasets["validation"] = val_test["train"]
-                datasets["test"] = val_test["test"]
-                
-            rest_folds = concatenate_datasets(folds)
-            out_domain = concatenate_datasets(out_of_domain_dataset)
-            datasets["train"] = concatenate_datasets([rest_folds, out_domain])
-            
-            print('Datasets', datasets)
-        
-        # Preprocessing the datasets.
-        # Preprocessing is slighlty different for training and evaluation.
-        if training_args.do_train:
-            column_names = datasets["train"].column_names
-        elif training_args.do_eval:
-            column_names = datasets["validation"].column_names
-        else:
-            column_names = datasets["test"].column_names
+    # Padding side determines if we do (question|context) or (context|question).
+    pad_on_right = tokenizer.padding_side == "right"
 
-        question_column_name = "question" if "question" in column_names else column_names[0]
-        context_column_name = "context" if "context" in column_names else column_names[1]
-        answer_column_name = "answers" if "answers" in column_names else column_names[2]
+    if data_args.max_seq_length > tokenizer.model_max_length:
+        logger.warning(
+            f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
+            f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
+        )
+    max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
-        # Padding side determines if we do (question|context) or (context|question).
-        pad_on_right = tokenizer.padding_side == "right"
+    # Training preprocessing
+    def prepare_train_features(examples):
+        # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
+        # in one example possible giving several features when a context is long, each of those features having a
+        # context that overlaps a bit the context of the previous feature.
+        tokenized_examples = tokenizer(
+            examples[question_column_name if pad_on_right else context_column_name],
+            examples[context_column_name if pad_on_right else question_column_name],
+            truncation="only_second" if pad_on_right else "only_first",
+            max_length=max_seq_length,
+            stride=data_args.doc_stride,
+            return_overflowing_tokens=True,
+            return_offsets_mapping=True,
+            padding="max_length" if data_args.pad_to_max_length else False,
+        )
 
-        if data_args.max_seq_length > tokenizer.model_max_length:
-            logger.warning(
-                f"The max_seq_length passed ({data_args.max_seq_length}) is larger than the maximum length for the"
-                f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
-            )
-        max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
+        # Since one example might give us several features if it has a long context, we need a map from a feature to
+        # its corresponding example. This key gives us just that.
+        sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
+        # The offset mappings will give us a map from token to character position in the original context. This will
+        # help us compute the start_positions and end_positions.
+        offset_mapping = tokenized_examples.pop("offset_mapping")
 
-        # Training preprocessing
-        def prepare_train_features(examples):
-            # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
-            # in one example possible giving several features when a context is long, each of those features having a
-            # context that overlaps a bit the context of the previous feature.
+        # Let's label those examples!
+        tokenized_examples["start_positions"] = []
+        tokenized_examples["end_positions"] = []
 
-            tokenized_examples = tokenizer(
-                examples[question_column_name if pad_on_right else context_column_name],
-                examples[context_column_name if pad_on_right else question_column_name],
-                truncation="only_second" if pad_on_right else "only_first",
-                max_length=max_seq_length,
-                stride=data_args.doc_stride,
-                return_overflowing_tokens=True,
-                return_offsets_mapping=True,
-                padding="max_length" if data_args.pad_to_max_length else False,
-            )
+        for i, offsets in enumerate(offset_mapping):
+            # We will label impossible answers with the index of the CLS token.
+            input_ids = tokenized_examples["input_ids"][i]
+            cls_index = input_ids.index(tokenizer.cls_token_id)
 
-            # Since one example might give us several features if it has a long context, we need a map from a feature to
-            # its corresponding example. This key gives us just that.
-            sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
-            # The offset mappings will give us a map from token to character position in the original context. This will
-            # help us compute the start_positions and end_positions.
-            offset_mapping = tokenized_examples.pop("offset_mapping")
+            # Grab the sequence corresponding to that example (to know what is the context and what is the question).
+            sequence_ids = tokenized_examples.sequence_ids(i)
 
-            # Let's label those examples!
-            tokenized_examples["start_positions"] = []
-            tokenized_examples["end_positions"] = []
+            # One example can give several spans, this is the index of the example containing this span of text.
+            sample_index = sample_mapping[i]
+            answers = examples[answer_column_name][sample_index]
+            # If no answers are given, set the cls_index as answer.
+            if len(answers["answer_start"]) == 0:
+                tokenized_examples["start_positions"].append(cls_index)
+                tokenized_examples["end_positions"].append(cls_index)
+            else:
+                # Start/end character index of the answer in the text.
+                start_char = answers["answer_start"][0]
+                end_char = start_char + len(answers["text"][0])
 
-            for i, offsets in enumerate(offset_mapping):
-                # We will label impossible answers with the index of the CLS token.
-                input_ids = tokenized_examples["input_ids"][i]
-                cls_index = input_ids.index(tokenizer.cls_token_id)
+                # Start token index of the current span in the text.
+                token_start_index = 0
+                while sequence_ids[token_start_index] != (1 if pad_on_right else 0):
+                    token_start_index += 1
 
-                # Grab the sequence corresponding to that example (to know what is the context and what is the question).
-                sequence_ids = tokenized_examples.sequence_ids(i)
+                # End token index of the current span in the text.
+                token_end_index = len(input_ids) - 1
+                while sequence_ids[token_end_index] != (1 if pad_on_right else 0):
+                    token_end_index -= 1
 
-                # One example can give several spans, this is the index of the example containing this span of text.
-                sample_index = sample_mapping[i]
-                answers = examples[answer_column_name][sample_index]
-                # If no answers are given, set the cls_index as answer.
-                if len(answers["answer_start"]) == 0:
+                # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
+                if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
                     tokenized_examples["start_positions"].append(cls_index)
                     tokenized_examples["end_positions"].append(cls_index)
                 else:
-                    # Start/end character index of the answer in the text.
-                    start_char = answers["answer_start"][0]
-                    end_char = start_char + len(answers["text"][0])
-
-                    # Start token index of the current span in the text.
-                    token_start_index = 0
-                    while sequence_ids[token_start_index] != (1 if pad_on_right else 0):
+                    # Otherwise move the token_start_index and token_end_index to the two ends of the answer.
+                    # Note: we could go after the last offset if the answer is the last word (edge case).
+                    while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
                         token_start_index += 1
-
-                    # End token index of the current span in the text.
-                    token_end_index = len(input_ids) - 1
-                    while sequence_ids[token_end_index] != (1 if pad_on_right else 0):
+                    tokenized_examples["start_positions"].append(token_start_index - 1)
+                    while offsets[token_end_index][1] >= end_char:
                         token_end_index -= 1
+                    tokenized_examples["end_positions"].append(token_end_index + 1)
 
-                    # Detect if the answer is out of the span (in which case this feature is labeled with the CLS index).
-                    if not (offsets[token_start_index][0] <= start_char and offsets[token_end_index][1] >= end_char):
-                        tokenized_examples["start_positions"].append(cls_index)
-                        tokenized_examples["end_positions"].append(cls_index)
-                    else:
-                        # Otherwise move the token_start_index and token_end_index to the two ends of the answer.
-                        # Note: we could go after the last offset if the answer is the last word (edge case).
-                        while token_start_index < len(offsets) and offsets[token_start_index][0] <= start_char:
-                            token_start_index += 1
-                        tokenized_examples["start_positions"].append(token_start_index - 1)
-                        while offsets[token_end_index][1] >= end_char:
-                            token_end_index -= 1
-                        tokenized_examples["end_positions"].append(token_end_index + 1)
-            return tokenized_examples
+        return tokenized_examples
 
-        if training_args.do_train:
-            if "train" not in datasets:
-                raise ValueError("--do_train requires a train dataset")
-            train_dataset = datasets["train"]
-            if data_args.max_train_samples is not None:
-                # We will select sample from whole data if agument is specified
-                train_dataset = train_dataset.select(range(data_args.max_train_samples))
-            # Create train feature from dataset
+    if training_args.do_train:
+        if "train" not in datasets:
+            raise ValueError("--do_train requires a train dataset")
+        train_dataset = datasets["train"]
+        if data_args.max_train_samples is not None:
+            # We will select sample from whole data if agument is specified
+            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+        # Create train feature from dataset
+        train_dataset = train_dataset.map(
+            prepare_train_features,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
+        if data_args.max_train_samples is not None:
+            # Number of samples might increase during Feature Creation, We select only specified max samples
+            train_dataset = train_dataset.select(range(data_args.max_train_samples))
 
-            train_dataset = train_dataset.map(
-                prepare_train_features,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-            )
-            if data_args.max_train_samples is not None:
-                # Number of samples might increase during Feature Creation, We select only specified max samples
-                train_dataset = train_dataset.select(range(data_args.max_train_samples))
-        # Validation preprocessing
-        def prepare_validation_features(examples):
-            # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
-            # in one example possible giving several features when a context is long, each of those features having a
-            # context that overlaps a bit the context of the previous feature.
-            tokenized_examples = tokenizer(
-                examples[question_column_name if pad_on_right else context_column_name],
-                examples[context_column_name if pad_on_right else question_column_name],
-                truncation="only_second" if pad_on_right else "only_first",
-                max_length=max_seq_length,
-                stride=data_args.doc_stride,
-                return_overflowing_tokens=True,
-                return_offsets_mapping=True,
-                padding="max_length" if data_args.pad_to_max_length else False,
-            )
-
-            # Since one example might give us several features if it has a long context, we need a map from a feature to
-            # its corresponding example. This key gives us just that.
-            sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
-
-            # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
-            # corresponding example_id and we will store the offset mappings.
-            tokenized_examples["example_id"] = []
-
-            for i in range(len(tokenized_examples["input_ids"])):
-                # Grab the sequence corresponding to that example (to know what is the context and what is the question).
-                sequence_ids = tokenized_examples.sequence_ids(i)
-                context_index = 1 if pad_on_right else 0
-
-                # One example can give several spans, this is the index of the example containing this span of text.
-                sample_index = sample_mapping[i]
-                tokenized_examples["example_id"].append(examples["id"][sample_index])
-
-                # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
-                # position is part of the context or not.
-                tokenized_examples["offset_mapping"][i] = [
-                    (o if sequence_ids[k] == context_index else None)
-                    for k, o in enumerate(tokenized_examples["offset_mapping"][i])
-                ]
-
-            return tokenized_examples
-
-        if training_args.do_eval:
-            if "validation" not in datasets:
-                raise ValueError("--do_eval requires a validation dataset")
-            eval_examples = datasets["validation"]
-            if data_args.max_eval_samples is not None:
-                # We will select sample from whole data
-                eval_examples = eval_examples.select(range(data_args.max_eval_samples))
-            # Validation Feature Creation
-            eval_dataset = eval_examples.map(
-                prepare_validation_features,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-            )
-            if data_args.max_eval_samples is not None:
-                # During Feature creation dataset samples might increase, we will select required samples again
-                eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
-
-        if training_args.do_predict:
-            if "test" not in datasets:
-                raise ValueError("--do_predict requires a test dataset")
-            predict_examples = datasets["test"]
-            if data_args.max_predict_samples is not None:
-                # We will select sample from whole data
-                predict_examples = predict_examples.select(range(data_args.max_predict_samples))
-            # Predict Feature Creation
-            predict_dataset = predict_examples.map(
-                prepare_validation_features,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-            )
-            if data_args.max_predict_samples is not None:
-                # During Feature creation dataset samples might increase, we will select required samples again
-                predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
-
-        # Data collator
-        # We have already padded to max length if the corresponding flag is True, otherwise we need to pad in the data
-        # collator.
-        data_collator = (
-            default_data_collator
-            if data_args.pad_to_max_length
-            else DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8 if training_args.fp16 else None)
+    # Validation preprocessing
+    def prepare_validation_features(examples):
+        # Tokenize our examples with truncation and maybe padding, but keep the overflows using a stride. This results
+        # in one example possible giving several features when a context is long, each of those features having a
+        # context that overlaps a bit the context of the previous feature.
+        tokenized_examples = tokenizer(
+            examples[question_column_name if pad_on_right else context_column_name],
+            examples[context_column_name if pad_on_right else question_column_name],
+            truncation="only_second" if pad_on_right else "only_first",
+            max_length=max_seq_length,
+            stride=data_args.doc_stride,
+            return_overflowing_tokens=True,
+            return_offsets_mapping=True,
+            padding="max_length" if data_args.pad_to_max_length else False,
         )
 
-        # Post-processing:
-        def post_processing_function(examples, features, predictions, stage="eval"):
-            # Post-processing: we match the start logits and end logits to answers in the original context.
-            predictions = postprocess_qa_predictions(
-                examples=examples,
-                features=features,
-                predictions=predictions,
-                version_2_with_negative=data_args.version_2_with_negative,
-                n_best_size=data_args.n_best_size,
-                max_answer_length=data_args.max_answer_length,
-                null_score_diff_threshold=data_args.null_score_diff_threshold,
-                output_dir=training_args.output_dir,
-                is_world_process_zero=trainer.is_world_process_zero(),
-                prefix=stage,
-            )
-            # Format the result to the format the metric expects.
-            if data_args.version_2_with_negative:
-                formatted_predictions = [
-                    {"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
-                ]
-            else:
-                formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
+        # Since one example might give us several features if it has a long context, we need a map from a feature to
+        # its corresponding example. This key gives us just that.
+        sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
 
-            references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
-            return EvalPrediction(predictions=formatted_predictions, label_ids=references)
+        # For evaluation, we will need to convert our predictions to substrings of the context, so we keep the
+        # corresponding example_id and we will store the offset mappings.
+        tokenized_examples["example_id"] = []
 
-        metric = load_metric("squad_v2" if data_args.version_2_with_negative else "squad")
+        for i in range(len(tokenized_examples["input_ids"])):
+            # Grab the sequence corresponding to that example (to know what is the context and what is the question).
+            sequence_ids = tokenized_examples.sequence_ids(i)
+            context_index = 1 if pad_on_right else 0
 
-        def compute_metrics(p: EvalPrediction):
-            return metric.compute(predictions=p.predictions, references=p.label_ids)
-        
-        # Initialize our Trainer
-        trainer = QuestionAnsweringTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset if training_args.do_train else None,
-            eval_dataset=eval_dataset if training_args.do_eval else None,
-            eval_examples=eval_examples if training_args.do_eval else None,
-            predict_dataset=predict_dataset if training_args.do_predict else None,
-            predict_examples=predict_examples if training_args.do_predict else None,
-            tokenizer=tokenizer,
-            data_collator=data_collator,
-            post_process_function=post_processing_function,
-            compute_metrics=compute_metrics,
+            # One example can give several spans, this is the index of the example containing this span of text.
+            sample_index = sample_mapping[i]
+            tokenized_examples["example_id"].append(examples["id"][sample_index])
+
+            # Set to None the offset_mapping that are not part of the context so it's easy to determine if a token
+            # position is part of the context or not.
+            tokenized_examples["offset_mapping"][i] = [
+                (o if sequence_ids[k] == context_index else None)
+                for k, o in enumerate(tokenized_examples["offset_mapping"][i])
+            ]
+
+        return tokenized_examples
+
+    if training_args.do_eval:
+        if "validation" not in datasets:
+            raise ValueError("--do_eval requires a validation dataset")
+        eval_examples = datasets["validation"]
+        if data_args.max_eval_samples is not None:
+            # We will select sample from whole data
+            eval_examples = eval_examples.select(range(data_args.max_eval_samples))
+        # Validation Feature Creation
+        eval_dataset = eval_examples.map(
+            prepare_validation_features,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
         )
-        
-        for i in range(int(training_args.num_train_epochs)):
-            if not os.path.exists(training_args.output_dir + '/Epoch-' + str(i+1)):
-                os.makedirs(training_args.output_dir + '/Epoch-' + str(i+1))
+        if data_args.max_eval_samples is not None:
+            # During Feature creation dataset samples might increase, we will select required samples again
+            eval_dataset = eval_dataset.select(range(data_args.max_eval_samples))
 
-        # Training
-        if training_args.do_train:
-            checkpoint = None
-            if training_args.resume_from_checkpoint is not None:
-                checkpoint = training_args.resume_from_checkpoint
-            elif last_checkpoint is not None:
-                checkpoint = last_checkpoint
-            train_result = trainer.train(resume_from_checkpoint=checkpoint)
-            trainer.save_model()  # Saves the tokenizer too for easy upload
+    if training_args.do_predict:
+        if "test" not in datasets:
+            raise ValueError("--do_predict requires a test dataset")
+        predict_examples = datasets["test"]
+        if data_args.max_predict_samples is not None:
+            # We will select sample from whole data
+            predict_examples = predict_examples.select(range(data_args.max_predict_samples))
+        # Predict Feature Creation
+        predict_dataset = predict_examples.map(
+            prepare_validation_features,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+        )
+        if data_args.max_predict_samples is not None:
+            # During Feature creation dataset samples might increase, we will select required samples again
+            predict_dataset = predict_dataset.select(range(data_args.max_predict_samples))
 
-            metrics = train_result.metrics
-            max_train_samples = (
-                data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
-            )
-            metrics["train_samples"] = min(max_train_samples, len(train_dataset))
+    # Data collator
+    # We have already padded to max length if the corresponding flag is True, otherwise we need to pad in the data
+    # collator.
+    data_collator = (
+        default_data_collator
+        if data_args.pad_to_max_length
+        else DataCollatorWithPadding(tokenizer, pad_to_multiple_of=8 if training_args.fp16 else None)
+    )
 
-            trainer.log_metrics("train", metrics)
-            trainer.save_metrics("train", metrics)
-            trainer.save_state()
+    # Post-processing:
+    def post_processing_function(examples, features, predictions, stage="eval"):
+        # Post-processing: we match the start logits and end logits to answers in the original context.
+        predictions = postprocess_qa_predictions(
+            examples=examples,
+            features=features,
+            predictions=predictions,
+            version_2_with_negative=data_args.version_2_with_negative,
+            n_best_size=data_args.n_best_size,
+            max_answer_length=data_args.max_answer_length,
+            null_score_diff_threshold=data_args.null_score_diff_threshold,
+            output_dir=training_args.output_dir,
+            is_world_process_zero=trainer.is_world_process_zero(),
+            prefix=stage,
+        )
+        # Format the result to the format the metric expects.
+        if data_args.version_2_with_negative:
+            formatted_predictions = [
+                {"id": k, "prediction_text": v, "no_answer_probability": 0.0} for k, v in predictions.items()
+            ]
+        else:
+            formatted_predictions = [{"id": k, "prediction_text": v} for k, v in predictions.items()]
 
-        # Evaluation
-        if training_args.do_eval:
-            logger.info("*** Evaluate ***")
-            metrics = trainer.evaluate()
+        references = [{"id": ex["id"], "answers": ex[answer_column_name]} for ex in examples]
+        return EvalPrediction(predictions=formatted_predictions, label_ids=references)
 
-            max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-            metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+    metric = load_metric("squad_v2" if data_args.version_2_with_negative else "squad")
 
-            trainer.log_metrics("eval", metrics)
-            trainer.save_metrics("eval", metrics)
+    def compute_metrics(p: EvalPrediction):
+        return metric.compute(predictions=p.predictions, references=p.label_ids)
 
-        # Prediction
-        if training_args.do_predict:
-            logger.info("*** Predict ***")
-            results = trainer.predict(predict_dataset, predict_examples)
-            metrics = results.metrics
+    # Initialize our Trainer
+    trainer = QuestionAnsweringTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset if training_args.do_train else None,
+        eval_dataset=eval_dataset if training_args.do_eval else None,
+        eval_examples=eval_examples if training_args.do_eval else None,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        post_process_function=post_processing_function,
+        compute_metrics=compute_metrics,
+    )
 
-            max_predict_samples = (
-                data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
-            )
-            metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
+    # Training
+    if training_args.do_train:
+        checkpoint = None
+        if training_args.resume_from_checkpoint is not None:
+            checkpoint = training_args.resume_from_checkpoint
+        elif last_checkpoint is not None:
+            checkpoint = last_checkpoint
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)
+        trainer.save_model()  # Saves the tokenizer too for easy upload
 
-            trainer.log_metrics("predict", metrics)
-            trainer.save_metrics("predict", metrics)
+        metrics = train_result.metrics
+        max_train_samples = (
+            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+        )
+        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
-        if training_args.push_to_hub:
-            trainer.push_to_hub()
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
+
+    # Evaluation
+    if training_args.do_eval:
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate()
+
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
+
+    # Prediction
+    if training_args.do_predict:
+        logger.info("*** Predict ***")
+        results = trainer.predict(predict_dataset, predict_examples)
+        metrics = results.metrics
+
+        max_predict_samples = (
+            data_args.max_predict_samples if data_args.max_predict_samples is not None else len(predict_dataset)
+        )
+        metrics["predict_samples"] = min(max_predict_samples, len(predict_dataset))
+
+        trainer.log_metrics("predict", metrics)
+        trainer.save_metrics("predict", metrics)
+
+    if training_args.push_to_hub:
+        trainer.push_to_hub()
 
 
 def _mp_fn(index):

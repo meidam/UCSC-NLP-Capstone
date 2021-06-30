@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="d19e1b6b-2829-4590-9f03-bdbcd8500f29" name="Default Changelist" comment="Gradual fine tuning (with no baseline) is different to the gradual_fine_tuning_baseline file, which does k-fold valid on the jupyter notebook directly. run_qa.py has been updated to work with both of these. BioASQ gradual fine tuning has also been added" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectId" id="1uMaLDYRPAF7Kdhq6zlub81Zk1h" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="true" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/bioASQ" />
+    <property name="node.js.detected.package.eslint" value="true" />
+    <property name="node.js.detected.package.tslint" value="true" />
+    <property name="node.js.selected.package.eslint" value="(autodetect)" />
+    <property name="node.js.selected.package.tslint" value="(autodetect)" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\unitu\PycharmProjects\UCSC-NLP-Capstone\bioASQ" />
+      <recent name="C:\Users\unitu\PycharmProjects\UCSC-NLP-Capstone\run_qa" />
+      <recent name="C:\Users\unitu\PycharmProjects\UCSC-NLP-Capstone\data" />
+      <recent name="C:\Users\unitu\PycharmProjects\NLP-UCSC-Capstone\UCSC-NLP-Capstone\data" />
+    </key>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="d19e1b6b-2829-4590-9f03-bdbcd8500f29" name="Default Changelist" comment="" />
+      <created>1624477855329</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1624477855329</updated>
+      <workItem from="1624477867122" duration="1559000" />
+      <workItem from="1624506616994" duration="9016000" />
+      <workItem from="1624521470231" duration="21435000" />
+      <workItem from="1624744024966" duration="189000" />
+      <workItem from="1624744338049" duration="53000" />
+      <workItem from="1624744469200" duration="9221000" />
+      <workItem from="1624862260680" duration="444000" />
+      <workItem from="1624862789023" duration="4368000" />
+      <workItem from="1625020254252" duration="762000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+    <option name="oldMeFiltersMigrated" value="true" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />
+    <MESSAGE value="Gradual fine tuning (with no baseline) is different to the gradual_fine_tuning_baseline file, which does k-fold valid on the jupyter notebook directly. run_qa.py has been updated to work with both of these. BioASQ gradual fine tuning has also been added" />
+    <option name="LAST_COMMIT_MESSAGE" value="Gradual fine tuning (with no baseline) is different to the gradual_fine_tuning_baseline file, which does k-fold valid on the jupyter notebook directly. run_qa.py has been updated to work with both of these. BioASQ gradual fine tuning has also been added" />
+  </component>
+</project>

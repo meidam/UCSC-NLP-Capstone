@@ -204,14 +204,14 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json"], "`test_file` should be a csv or a json file."
             if self.dataset_name is not None:
                 extension = self.dataset_name
-                print(extension)
-                print(self.dataset_name)
+                # print(extension)
+                # print(self.dataset_name)
 
 
 def get_covidQA_dataset():
     covid_file = '../data/COVID-QA.json'
     covid_qa = datasets.load_dataset('custom_squad.py', data_files={'train': covid_file})['train']
-    return datasets.Dataset.from_dict(covid_qa[:])
+    return datasets.Dataset.from_dict(covid_qa[:10])
 
 
 def main():
@@ -269,7 +269,7 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    print('Training Args: ', training_args)
+    #print('Training Args: ', training_args)
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
@@ -367,10 +367,21 @@ def main():
     # Loop through k times
 
     output_dir = training_args.output_dir
+    given_model_name_or_path = model_args.model_name_or_path
+
     for i in range(0, data_args.k_fold_cross_valid):
         print('***************************')
         print('Split ', i + 1)
         print('***************************')
+
+        if 'Split-' in model_args.model_name_or_path and data_args.k_fold_cross_valid > 1:
+            model_args.model_name_or_path = given_model_name_or_path
+            if i > 0:
+                model_args.model_name_or_path = model_args.model_name_or_path + str(i) + '/'
+            else:
+                model_args.model_name_or_path = model_args.model_name_or_path + str(data_args.k_fold_cross_valid) + '/'
+
+        print('model path ==== ', model_args.model_name_or_path)
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,

@@ -1,0 +1,23 @@
+{
+  "config": {
+    "adapter_residual_before_ln": false,
+    "invertible_adapter": null,
+    "leave_out": [],
+    "ln_after": false,
+    "ln_before": false,
+    "mh_adapter": true,
+    "non_linearity": "swish",
+    "original_ln_after": true,
+    "original_ln_before": false,
+    "output_adapter": true,
+    "reduction_factor": 16,
+    "residual_before_ln": true
+  },
+  "config_id": "b1017368d7a97b11",
+  "hidden_size": 768,
+  "model_class": "RobertaModelWithHeads",
+  "model_name": "roberta-base",
+  "model_type": "roberta",
+  "name": "squad",
+  "type": "text_task"
+}

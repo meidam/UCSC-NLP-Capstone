@@ -330,8 +330,8 @@ def main():
     # Setup adapters
     if adapter_args.train_adapter:
         #task_name = data_args.dataset_name or "squad"
-        #task_name = "full_squad_covidQA"
-        task_name = "squad"
+        task_name = "full_squad_covidQA"
+        #task_name = "squad"
         # check if adapter already exists otherwise add it
 
         if task_name not in model.config.adapters:

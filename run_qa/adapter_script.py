@@ -98,7 +98,7 @@ def train_adapter_base(lr):
 def run_gradual_ft(output_dir, checkpoint, covid_val, lr):
     args = f"""
     run_qa_alt.py 
-    --model_name_or_path={checkpoint}
+    --model_name_or_path=roberta-base
     --dataset_name=../data/full_squad_covidQA/
     --do_train
     --do_eval
@@ -145,15 +145,7 @@ def main():
     #squad_qa = concatenate_datasets([squad_dataset['train'], squad_dataset['validation']])
     #covid_and_squad_dataset_path = "../data/full_squad_covidQA"
 
-    train_adapter(1e-5)
-    train_adapter(2e-5)
-    train_adapter(3e-5)
-    train_adapter(5e-5)
-
-    train_adapter_base(1e-5)
-    train_adapter_base(2e-5)
-    train_adapter_base(3e-5)
-    train_adapter_base(5e-5)
+    COVID_adapt()
 
 if __name__ == "__main__":
     main()

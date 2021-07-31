@@ -21,6 +21,7 @@ Fine-tuning the library models for question answering.
 import logging
 import os
 import sys
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -62,6 +63,14 @@ class ModelArguments:
 
     model_name_or_path: str = field(
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
+    )
+    save_adapter_model: str = field(
+        default=None,
+        metadata={"help": "path to where we are going to save the adapter model"}
+    )
+    pretrained_adapter_model: str = field(
+        default=None,
+        metadata={"help": "more adapter stuff"}
     )
     config_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained config name or path if not the same as model_name"}
@@ -294,7 +303,7 @@ def main():
     if model_args.config_name:
         print('CONFIG_NAME: ', model_args.config_name)
     else:
-        print('aaaaaaaaaaaaaaaaaaaaaaaaaaaaahhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh')
+        print('-----------NO CONFIG_NAME given---------------')
 
     config = AutoConfig.from_pretrained(
         model_args.config_name if model_args.config_name else model_args.model_name_or_path,
@@ -329,9 +338,10 @@ def main():
 
     # Setup adapters
     if adapter_args.train_adapter:
-        #task_name = data_args.dataset_name or "squad"
-        task_name = "full_squad_covidQA"
-        #task_name = "squad"
+        if data_args.dataset_name == 'squad':
+            task_name = 'squad'
+        else:
+            task_name = re.search("([^/]+$)",data_args.dataset_name)
         # check if adapter already exists otherwise add it
 
         if task_name not in model.config.adapters:
@@ -679,7 +689,9 @@ def main():
 
     if training_args.push_to_hub:
         trainer.push_to_hub()
-
+    
+    if model_args.save_adapter_model:
+        model.save_pretrained(model_args.save_adapter_model)
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)

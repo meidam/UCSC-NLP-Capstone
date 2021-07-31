@@ -95,26 +95,25 @@ def train_adapter_base(lr):
         run_gradual_ft(cur_dir, checkpoint, covid_val, lr)
 
 
-def run_gradual_ft(output_dir, checkpoint, covid_val, lr):
+def run_gradual_ft(output_dir, checkpoint, covid_val, lr, dataset_name,adapter_output):
     args = f"""
     run_qa_alt.py 
-    --model_name_or_path=roberta-base
-    --dataset_name=../data/full_squad_covidQA/
+    --model_name_or_path={checkpoint}
+    --dataset_name={dataset_name}
     --do_train
-    --do_eval
-    --do_predict
     --per_device_train_batch_size=40
     --per_device_eval_batch_size=40
     --evaluation_strategy=no
     --save_strategy=no
     --logging_strategy=epoch
     --learning_rate={lr}
-    --num_train_epochs=4
+    --num_train_epochs=1
     --max_seq_length=384
     --doc_stride=128
     --output_dir={output_dir}
     --overwrite_output_dir
     --train_adapter
+    --save_adapter_model={adapter_output}
     --adapter_config=houlsby
     --load_adapter=@ukp/roberta-base_qa_squad1_houlsby
     """.split()
@@ -140,12 +139,15 @@ def main():
     #data_files["train"] = covid_file
 	
     #covid_qa = get_dataset(covid_file)
-    #bio_qa = get_dataset(bio_file)
+    bio_qa = get_dataset(bio_file)
 
     #squad_qa = concatenate_datasets([squad_dataset['train'], squad_dataset['validation']])
     #covid_and_squad_dataset_path = "../data/full_squad_covidQA"
 
-    COVID_adapt()
+    bio_path = "../data/bioASQ"
+    bio_data = datasets.dataset_dict.DatasetDict({'train':bio_qa})
+    bio_data.save_to_disk(bio_path)
+    run_gradual_ft("bio_adapter", "roberta-base", None, 3e-5, bio_path,"bio_adapter_pretrained")
 
 if __name__ == "__main__":
     main()

@@ -341,7 +341,7 @@ def main():
         if data_args.dataset_name == 'squad':
             task_name = 'squad'
         else:
-            task_name = re.search("([^/]+$)",data_args.dataset_name)
+            task_name = re.search("([^/]+$)",data_args.dataset_name).group()
         # check if adapter already exists otherwise add it
 
         if task_name not in model.config.adapters:

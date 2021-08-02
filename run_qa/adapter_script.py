@@ -92,7 +92,7 @@ def train_adapter_base(lr):
         squad_qa.shuffle()
         bio_qa.shuffle()
         make_and_save_full_dataset(covid_train, covid_val, covid_test, covid_and_squad_dataset_path)
-        run_gradual_ft(cur_dir, checkpoint, covid_val, lr)
+        run_gradual_ft(cur_dir, checkpoint, covid_val, lr, covid_and_squad_dataset_path, "../models/covid_temp_adapter_out")
 
 
 def run_gradual_ft(output_dir, checkpoint, covid_val, lr, dataset_name,adapter_output):
@@ -101,6 +101,8 @@ def run_gradual_ft(output_dir, checkpoint, covid_val, lr, dataset_name,adapter_o
     --model_name_or_path={checkpoint}
     --dataset_name={dataset_name}
     --do_train
+    --do_eval
+    --do_predict
     --per_device_train_batch_size=40
     --per_device_eval_batch_size=40
     --evaluation_strategy=no
@@ -139,15 +141,15 @@ def main():
     #data_files["train"] = covid_file
 	
     #covid_qa = get_dataset(covid_file)
-    bio_qa = get_dataset(bio_file)
+    #bio_qa = get_dataset(bio_file)
 
     #squad_qa = concatenate_datasets([squad_dataset['train'], squad_dataset['validation']])
     #covid_and_squad_dataset_path = "../data/full_squad_covidQA"
-
-    bio_path = "../data/bioASQ"
-    bio_data = datasets.dataset_dict.DatasetDict({'train':bio_qa})
-    bio_data.save_to_disk(bio_path)
-    run_gradual_ft("bio_adapter", "roberta-base", None, 3e-5, bio_path,"bio_adapter_pretrained")
+    COVID_adapt()
+    #bio_path = "../data/bioASQ"
+    #bio_data = datasets.dataset_dict.DatasetDict({'train':bio_qa})
+    #bio_data.save_to_disk(bio_path)
+    #run_gradual_ft("bio_adapter", "roberta-base", None, 3e-5, bio_path,"bio_adapter_pretrained")
 
 if __name__ == "__main__":
     main()

@@ -300,17 +300,6 @@ def main():
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
     # download model & vocab.
-    if model_args.config_name:
-        print('CONFIG_NAME: ', model_args.config_name)
-    else:
-        print('-----------NO CONFIG_NAME given---------------')
-
-    config = AutoConfig.from_pretrained(
-        model_args.config_name if model_args.config_name else model_args.model_name_or_path,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
     tokenizer = AutoTokenizer.from_pretrained(
         model_args.tokenizer_name if model_args.tokenizer_name else model_args.model_name_or_path,
         cache_dir=model_args.cache_dir,
@@ -318,15 +307,35 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    g = model_args.model_name_or_path + '/full_squad_covidQA/'
-    model = AutoModelForQuestionAnswering.from_pretrained(
-        model_args.model_name_or_path,
-        from_tf=bool(".ckpt" in g),
-        config=config,
-        cache_dir=model_args.cache_dir,
-        revision=model_args.model_revision,
-        use_auth_token=True if model_args.use_auth_token else None,
-    )
+    
+    if model_args.pretrained_adapter_model:
+        config = AutoConfig.from_pretrained(
+            model_args.pretrained_adapter_model,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        model = AutoModelForQuestionAnswering.from_pretrained(
+            model_args.pretrained_adapter_model,
+            config=config,
+            local_files_only=True,
+        )
+    else:
+        config = AutoConfig.from_pretrained(
+            model_args.config_name if model_args.config_name else model_args.model_name_or_path,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+
+        model = AutoModelForQuestionAnswering.from_pretrained(
+            model_args.model_name_or_path,
+            from_tf=bool(".ckpt" in model_args.model_name_or_path),
+            config=config,
+            cache_dir=model_args.cache_dir,
+            revision=model_args.model_revision,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
 
     # Tokenizer check: this script requires a fast tokenizer.
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
@@ -345,12 +354,6 @@ def main():
         # check if adapter already exists otherwise add it
 
         if task_name not in model.config.adapters:
-            print('==============================================')
-            print('----------------------------------------------')
-            print('task_name not in model.config.adapters: ', task_name not in model.config.adapters)
-            print('adapter_config: ', adapter_args.adapter_config)
-            print('----------------------------------------------')
-            print('==============================================')
             # resolve adapter config
             adapter_config = AdapterConfig.load(
                 adapter_args.adapter_config,
@@ -689,9 +692,8 @@ def main():
 
     if training_args.push_to_hub:
         trainer.push_to_hub()
-    
-    if model_args.save_adapter_model:
-        model.save_pretrained(model_args.save_adapter_model)
+
+    model.save_pretrained(training_args.output_dir)
 
 def _mp_fn(index):
     # For xla_spawn (TPUs)
